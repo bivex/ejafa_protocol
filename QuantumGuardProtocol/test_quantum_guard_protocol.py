@@ -3,9 +3,11 @@ import os
 import hmac
 import hashlib
 import sys # Added import for sys
+import unittest.mock # Added for patching
+import subprocess # Added for running main via subprocess
 
 # Import the protocol to be tested
-from quantum_guard_protocol import QuantumGuardProtocol, secure_zero, PROTOCOL_NAME, SESSION_KEY_SIZE
+from quantum_guard_protocol import QuantumGuardProtocol, secure_zero, PROTOCOL_NAME, SESSION_KEY_SIZE, run_protocol_demonstration
 
 from nacl.public import PublicKey
 from nacl.signing import SigningKey
@@ -44,6 +46,9 @@ class TestQuantumGuardProtocol(unittest.TestCase):
         self.assertEqual(self.bob_protocol.name, "Bob")
         self.assertEqual(self.alice_protocol.long_term_signing_key, self.alice_signing_key)
         self.assertEqual(self.alice_protocol.long_term_verify_key, self.alice_verify_key)
+        self.assertIsNone(self.alice_protocol.ephemeral_private_key)
+        self.assertIsNone(self.alice_protocol.ephemeral_public_key)
+        self.assertIsNone(self.alice_protocol.session_key)
 
     def test_ephemeral_key_generation(self):
         alice_eph_pub = self.alice_protocol.generate_ephemeral_keys()
@@ -73,7 +78,7 @@ class TestQuantumGuardProtocol(unittest.TestCase):
         tampered_signature[0] ^= 0x01 # Flip a bit
         tampered_signature = bytes(tampered_signature)
 
-        self.assertFalse(self.bob_protocol.verify_signature(alice_eph_pub, tampered_signature, self.alice_verify_key))
+        self.assertIs(self.bob_protocol.verify_signature(alice_eph_pub, tampered_signature, self.alice_verify_key), False)
 
     def test_signature_and_verification_failure_tampered_message(self):
         alice_eph_pub = self.alice_protocol.generate_ephemeral_keys()
@@ -228,6 +233,85 @@ class TestQuantumGuardProtocol(unittest.TestCase):
         # The original `data` object might still hold its value until garbage collected.
         # This test primarily verifies the function returns a zeroed byte string.
         self.assertNotEqual(id(data), id(zeroed_data))
+
+    # New tests for run_protocol_demonstration error paths
+    @unittest.mock.patch('quantum_guard_protocol.QuantumGuardProtocol.verify_signature', side_effect=[False])
+    @unittest.mock.patch('quantum_guard_protocol.SigningKey.generate')
+    def test_run_protocol_demonstration_alice_signature_failure_for_bob(self, mock_signing_key_generate, mock_verify_signature):
+        # Mock SigningKey.generate to provide dummy keys for run_protocol_demonstration\'s internal setup
+        # This is necessary because run_protocol_demonstration generates its own SigningKey instances.
+        mock_signing_key_generate.side_effect = [
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Alice\'s long-term key
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Bob\'s long-term key
+        ]
+        
+        # The first call to verify_signature (bob.verify_signature) will return False as per side_effect=[False]
+        with self.assertRaisesRegex(ValueError, "Protocol aborted: Alice\'s signature verification failed for Bob."):
+            run_protocol_demonstration()
+
+    @unittest.mock.patch('quantum_guard_protocol.QuantumGuardProtocol.verify_signature', side_effect=[True, False])
+    @unittest.mock.patch('quantum_guard_protocol.SigningKey.generate')
+    def test_run_protocol_demonstration_bob_signature_failure_for_alice(self, mock_signing_key_generate, mock_verify_signature):
+        # Mock SigningKey.generate to provide dummy keys
+        mock_signing_key_generate.side_effect = [
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Alice\'s long-term key
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Bob\'s long-term key
+        ]
+
+        # The first call to verify_signature (bob.verify_signature) will return True
+        # The second call to verify_signature (alice.verify_signature) will return False
+        with self.assertRaisesRegex(ValueError, "Protocol aborted: Bob\'s signature verification failed for Alice."):
+            run_protocol_demonstration()
+
+    @unittest.mock.patch('quantum_guard_protocol.hmac.compare_digest', side_effect=[False])
+    @unittest.mock.patch('quantum_guard_protocol.SigningKey.generate')
+    def test_run_protocol_demonstration_shared_secret_mismatch(self, mock_signing_key_generate, mock_compare_digest):
+        # Mock SigningKey.generate to provide dummy keys
+        mock_signing_key_generate.side_effect = [
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Alice\'s long-term key
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Bob\'s long-term key
+        ]
+
+        # The first call to hmac.compare_digest (for shared secrets) will return False
+        with self.assertRaisesRegex(ValueError, "ERROR: Shared secrets do not match!"):
+            run_protocol_demonstration()
+
+    @unittest.mock.patch('quantum_guard_protocol.hmac.compare_digest', side_effect=[True, False])
+    @unittest.mock.patch('quantum_guard_protocol.SigningKey.generate')
+    def test_run_protocol_demonstration_session_key_mismatch(self, mock_signing_key_generate, mock_compare_digest):
+        # Mock SigningKey.generate to provide dummy keys
+        mock_signing_key_generate.side_effect = [
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Alice\'s long-term key
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Bob\'s long-term key
+        ]
+
+        # The first call to hmac.compare_digest (for shared secrets) will return True
+        # The second call to hmac.compare_digest (for session keys) will return False
+        with self.assertRaisesRegex(ValueError, "ERROR: Derived session keys do not match!"):
+            run_protocol_demonstration()
+
+    @unittest.mock.patch('quantum_guard_protocol.QuantumGuardProtocol.decrypt', return_value=None)
+    @unittest.mock.patch('quantum_guard_protocol.SigningKey.generate')
+    def test_run_protocol_demonstration_decryption_failure(self, mock_signing_key_generate, mock_decrypt):
+        mock_signing_key_generate.side_effect = [
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Alice's long-term key
+            unittest.mock.Mock(verify_key=unittest.mock.Mock(encode=unittest.mock.Mock(hex=lambda: "dummy_hex_key"))), # Bob's long-term key
+        ]
+        with self.assertRaisesRegex(ValueError, "Bob: Decryption failed!"):
+            run_protocol_demonstration()
+
+    def test_main_execution_via_subprocess(self):
+        # This test ensures that the __main__ block is executed without errors
+        # when the script is run directly.
+        try:
+            result = subprocess.run(
+                [sys.executable, 'quantum_guard_protocol.py'],
+                capture_output=True, text=True, check=True
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("All QuantumGuardProtocol tests passed", result.stdout)
+        except subprocess.CalledProcessError as e:
+            self.fail(f"Subprocess failed with exit code {e.returncode}:\nStdout: {e.stdout}\nStderr: {e.stderr}")
 
 if __name__ == '__main__':
     # Use a custom test runner to capture and format output with rich
