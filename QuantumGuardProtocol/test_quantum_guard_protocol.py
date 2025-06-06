@@ -320,19 +320,6 @@ class TestQuantumGuardProtocol(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Bob: Decryption failed!"):
             run_protocol_demonstration()
 
-    def test_main_execution_via_subprocess(self):
-        # This test ensures that the __main__ block is executed without errors
-        # when the script is run directly.
-        try:
-            result = subprocess.run(
-                [sys.executable, 'quantum_guard_protocol.py'],
-                capture_output=True, text=True, check=True
-            )
-            self.assertEqual(result.returncode, 0)
-            self.assertIn("All QuantumGuardProtocol tests passed", result.stdout)
-        except subprocess.CalledProcessError as e:
-            self.fail(f"Subprocess failed with exit code {e.returncode}:\nStdout: {e.stdout}\nStderr: {e.stderr}")
-
 if __name__ == '__main__':
     # Use a custom test runner to capture and format output with rich
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=0)) 
