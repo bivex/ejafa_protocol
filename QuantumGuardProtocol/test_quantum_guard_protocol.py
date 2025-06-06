@@ -7,7 +7,7 @@ import unittest.mock # Added for patching
 import subprocess # Added for running main via subprocess
 
 # Import the protocol to be tested
-from quantum_guard_protocol import QuantumGuardProtocol, secure_zero, PROTOCOL_NAME, SESSION_KEY_SIZE, run_protocol_demonstration
+from quantum_guard_protocol import QuantumGuardProtocol, secure_zero, PROTOCOL_NAME, SESSION_KEY_SIZE, run_protocol_demonstration, hkdf_expand
 
 from nacl.public import PublicKey
 from nacl.signing import SigningKey
@@ -171,6 +171,26 @@ class TestQuantumGuardProtocol(unittest.TestCase):
 
         # The session keys should NOT match if PROTOCOL_NAME had an impact
         self.assertFalse(hmac.compare_digest(original_alice_session_key, mutated_alice_session_key))
+
+    def test_hkdf_expand_length_handling(self):
+        prk = os.urandom(32) # A dummy PRK
+        info = b"test info"
+
+        # Test with a length that is a multiple of SHA256 digest size (32 bytes)
+        key1 = hkdf_expand(prk, info, 32)
+        self.assertEqual(len(key1), 32)
+
+        # Test with a length that is not a multiple of SHA256 digest size
+        key2 = hkdf_expand(prk, info, 20)
+        self.assertEqual(len(key2), 20)
+
+        # Test with a length that is larger than SHA256 digest size but requires multiple iterations
+        key3 = hkdf_expand(prk, info, 60) # Requires 2 iterations (32 + 28)
+        self.assertEqual(len(key3), 60)
+
+        # Ensure that different info strings produce different keys
+        key4 = hkdf_expand(prk, b"other info", 32)
+        self.assertFalse(hmac.compare_digest(key1, key4))
 
     def test_encryption_decryption_success(self):
         alice_eph_pub = self.alice_protocol.generate_ephemeral_keys()
