@@ -36,6 +36,17 @@ def secure_zero(b: bytes):
     # Convert back to bytes (this might create a new object, but original is still referenced)
     return bytes(ba)
 
+# HKDF-Expand(PRK, info, L) -> OKM
+def hkdf_expand(prk_val: bytes, info_val: bytes, length: int) -> bytes:
+    okm = b''
+    t = b''
+    counter = 0x01
+    while len(okm) < length:
+        t = hmac.new(prk_val, t + info_val + bytes([counter]), hashlib.sha256).digest()
+        okm += t
+        counter += 1
+    return okm[:length]
+
 class QuantumGuardProtocol:
     def __init__(self, name: str, long_term_signing_key: SigningKey, long_term_verify_key: VerifyKey):
         self.name = name
@@ -98,16 +109,6 @@ class QuantumGuardProtocol:
         shared_secret = secure_zero(shared_secret)
 
         # HKDF-Expand(PRK, info, L) -> OKM
-        def hkdf_expand(prk_val: bytes, info_val: bytes, length: int) -> bytes:
-            okm = b''
-            t = b''
-            counter = 0x01
-            while len(okm) < length:
-                t = hmac.new(prk_val, t + info_val + bytes([counter]), hashlib.sha256).digest()
-                okm += t
-                counter += 1
-            return okm[:length]
-        
         self.session_key = hkdf_expand(prk, info_encrypt, SESSION_KEY_SIZE)
         
         # Securely zero out PRK after session key derivation
@@ -276,10 +277,10 @@ def run_protocol_demonstration():
 def main():
     try:
         run_protocol_demonstration()
+        console.rule("[bold green]All QuantumGuardProtocol tests passed ---[/bold green]")
     except ValueError as e:
         console.print(f"[bold red]Protocol Error:[/bold red] {e}")
         # In a real application, you might exit with a non-zero status here
-        # sys.exit(1) # Uncomment if you want to exit the script on error
     except Exception as e:
         console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
         # sys.exit(1) # Uncomment if you want to exit the script on error
