@@ -151,6 +151,13 @@ def run_protocol_demonstration():
     # NOTE FOR PRODUCTION: Avoid logging sensitive cryptographic material (keys, nonces, plaintext, ciphertext)
     # in production environments. This detailed logging is for demonstration purposes only.
 
+    # 1. Generate long-term Ed25519 keys for Alice and Bob
+    alice_long_term_signing_key = SigningKey.generate()
+    alice_long_term_verify_key = alice_long_term_signing_key.verify_key
+
+    bob_long_term_signing_key = SigningKey.generate()
+    bob_long_term_verify_key = bob_long_term_signing_key.verify_key
+
     console.print(Panel(
         f"[bold green]--- Long-Term Key Generation ---[/bold green]\n"
         f"Alice's Long-Term Verify Key (Hex): [yellow]{alice_long_term_verify_key.encode().hex()}[/yellow]\n"
@@ -159,13 +166,6 @@ def run_protocol_demonstration():
         border_style="dim cyan"
     ))
     
-    # 1. Generate long-term Ed25519 keys for Alice and Bob
-    alice_long_term_signing_key = SigningKey.generate()
-    alice_long_term_verify_key = alice_long_term_signing_key.verify_key
-
-    bob_long_term_signing_key = SigningKey.generate()
-    bob_long_term_verify_key = bob_long_term_signing_key.verify_key
-
     console.print(Panel(
         f"[bold green]--- Protocol Initialization ---[/bold green]\n"
         f"Alice initialized.\n"
