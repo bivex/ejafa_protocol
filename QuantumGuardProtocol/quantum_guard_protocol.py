@@ -2,6 +2,7 @@ import os
 import hashlib
 import hmac
 from typing import Tuple, Optional
+import sys
 
 # Required libraries:
 # pip install pynacl rich
@@ -86,7 +87,7 @@ class QuantumGuardProtocol:
         shared_secret = Box(self.ephemeral_private_key, peer_ephemeral_public_key).shared_key()
         # Securely zero out ephemeral private key after use
         if self.ephemeral_private_key:
-            self.ephemeral_private_key = secure_zero(self.ephemeral_private_key.encode())
+            self.ephemeral_private_key = None
 
         console.print(f"[{self.name}]: Performed X25519 key exchange.")
         return shared_secret
@@ -280,10 +281,10 @@ def main():
         console.rule("[bold green]All QuantumGuardProtocol tests passed ---[/bold green]")
     except ValueError as e:
         console.print(f"[bold red]Protocol Error:[/bold red] {e}")
-        # In a real application, you might exit with a non-zero status here
+        sys.exit(1) # Uncommented to ensure non-zero exit on error
     except Exception as e:
         console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
-        # sys.exit(1) # Uncomment if you want to exit the script on error
+        sys.exit(1) # Uncommented to ensure non-zero exit on unexpected errors
 
 if __name__ == "__main__":
     main() 
