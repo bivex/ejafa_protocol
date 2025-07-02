@@ -1,5 +1,5 @@
 # EjafaProtocol Python Implementation
-
+ [![Protocolled 📡](https://a.b-b.top/badge.svg?repo=ejafa_protocol&label=Protocolled%20📡&background_color=795548&background_color2=8d6e63&utm_source=github&utm_medium=readme&utm_campaign=badge)](https://a.b-b.top)
 This is a Python implementation of the EjafaProtocol, a secure communication protocol that uses:
 - X25519 for key exchange
 - BLAKE2b for key derivation
